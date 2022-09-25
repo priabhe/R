@@ -1,0 +1,255 @@
+---
+title: "Week-3 Assignment"
+author: "pd"
+date: "2022-08-30"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# NYPD Shooting Incident Data (Historic)
+```{r tidyverse,include=FALSE}
+library(tidyverse)
+```
+### Importing Data
+Let's start by reading the CSV file.
+
+```{r read_data, echo=TRUE,message=FALSE}
+#Importing data
+data1 <- read_csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+
+```
+Looking at top few rows of the data.
+
+```{r actual_data, echo=TRUE,message=FALSE}
+head(data1)
+```
+And summary of the data.
+```{r summary, echo=TRUE,message=FALSE}
+summary(data1)
+data2<-data1 #copy of data to avoid modification in the original data
+```
+
+### Tidy and Transform data
+#### 1. Let's check if all the entries in the data are unique.
+```{r unique_rows, echo=TRUE,message=FALSE}
+#total number of rows in the data
+nrow(data2)
+#total number of unique rows in the data
+nrow(unique(data2)) 
+```
+There are no duplicate entries in the data since the total number of rows is same as the unique number of rows in the data.
+
+#### 2. Changing data types
+OCCUR_DATE column in the data is of character type. Let's change it to DATE type using lubridate package.
+```{r date_type, echo=TRUE,message=FALSE}
+##Change Occur_Date (char) column to DATE type
+library(lubridate)
+data2<-data2 %>% mutate(OCCUR_DATE=mdy(OCCUR_DATE))
+```
+Let's also change few character types to factors and look at the summary.
+```{r char_type, echo=TRUE,message=FALSE}
+## Convert characters to factors
+data2$BORO <- as.factor(data2$BORO)
+data2$VIC_RACE <- as.factor(data2$VIC_RACE)
+data2$VIC_SEX <- as.factor(data2$VIC_SEX)
+data2$PERP_SEX <- as.factor(data2$PERP_SEX)
+data2$PERP_RACE <- as.factor(data2$PERP_RACE)
+data2$STATISTICAL_MURDER_FLAG <- as.factor(data2$STATISTICAL_MURDER_FLAG)
+data2$VIC_AGE_GROUP <- as.factor(data2$VIC_AGE_GROUP)
+data2$PERP_AGE_GROUP <- as.factor(data2$PERP_AGE_GROUP)
+
+##summary
+summary(data2)
+```
+
+
+#### 3. Handling Missing values
+
+Let's count the number of rows with atleast one NA.
+```{r count_NA_row, echo=TRUE,message=FALSE}
+#Find the rows with aleast one NA entry
+nrow(data2[!complete.cases(data2), ])
+```
+There are 18353 rows with atleast one NA entry. Let's also find out the number of NA in each column.
+```{r count_NA_col, echo=TRUE,message=FALSE}
+#count of NA in each column
+colSums(is.na(data2)) 
+```
+Looks like there are 5 columns with NA entry and to handle them, let's fill them all with 'UNKNOWN' tag.
+```{r fill_unknown, echo=TRUE,message=FALSE}
+## Fill na with Unknown tag
+data2<-data2  %>% 
+  mutate(JURISDICTION_CODE = ifelse(is.na(JURISDICTION_CODE),'UNKNOWN', JURISDICTION_CODE),
+         LOCATION_DESC = ifelse(is.na(LOCATION_DESC),'UNKNOWN', LOCATION_DESC),
+         PERP_AGE_GROUP = ifelse(is.na(PERP_AGE_GROUP),'UNKNOWN', PERP_AGE_GROUP),
+         PERP_SEX = ifelse(is.na(PERP_SEX),'UNKNOWN', PERP_SEX),
+         PERP_RACE = ifelse(is.na(PERP_RACE),'UNKNOWN', PERP_RACE))
+data2
+```
+### Analysis
+
+First lets find out how many incidences were recorded in each borough.
+```{r n_boro, echo=TRUE,message=FALSE}
+## How many incidences recorded in each borough?
+n_boro<-data2 %>% count(BORO) %>% arrange(-n)
+n_boro #Brooklyn has the highest number of incident
+```
+And visualize the same with a bar plot.
+```{r n_boro_vis, echo=TRUE,message=FALSE}
+## Visualization
+n_boro %>% ggplot(mapping = aes(x=BORO,y=n))+
+  geom_bar(stat = "identity",fill="Blue")+
+  labs(title = "INCIDENCES IN EACH BOROUGH")+
+  xlab("BOROUGH")+
+  ylab("INCIDENCES")+
+  theme(axis.text.x = element_text(angle=45, vjust=0.6))
+```
+
+We can see that Brooklyn has the highest number of recorded incidences with 10365 in number.
+Now, let's filter the number of incidences resulted in murder in each borough.
+```{r n_murder, echo=TRUE,message=FALSE}
+## how many incidences resulted in murder in each borough?
+n_murder<-data2  %>%  group_by(BORO)  %>% 
+  count(STATISTICAL_MURDER_FLAG) %>% 
+  filter(STATISTICAL_MURDER_FLAG=='TRUE') %>%
+  arrange(-n) 
+n_murder #Brooklyn has the highest
+```
+Again, Brooklyn is the clear leader with 2020 mudrer flags as you can see in the chart below.
+```{r n_murder_vis, echo=TRUE,message=FALSE}
+## Visualization
+n_murder %>% ggplot(mapping = aes(x=BORO,y=n))+
+  geom_point(size=5) + 
+  geom_segment(aes(x=BORO, 
+                   xend=BORO, 
+                   y=0, 
+                   yend=n))+
+  labs(title = "STATISTICAL MURDER FLAG IN EACH BOROUGH")+
+  xlab("BOROUGH")+
+  ylab("MURDER FLAG")+
+  theme(axis.text.x = element_text(angle=45, vjust=0.6))
+```
+
+Now that we know Brooklyn has the highest number of murder flag, lets also analyze further by finding out the precint in Brooklyn with the highest number of murder flags.
+```{r n_precint, echo=TRUE,message=FALSE}
+#Which precint in brooklyn has highest number of murder
+n_precint<-data2 %>% filter(BORO=='BROOKLYN') %>%  
+       group_by(PRECINCT) %>%
+       count(STATISTICAL_MURDER_FLAG) %>% 
+       filter(STATISTICAL_MURDER_FLAG=='TRUE') %>%
+       arrange(-n)
+n_precint
+n_precint$PRECINCT<-as.character(n_precint$PRECINCT) #convert num to char for easy visualization
+```
+Plotting the same.
+```{r precint_vis, echo=TRUE,message=FALSE}
+## Vislualization
+n_precint %>% ggplot(mapping = aes(x=PRECINCT,y=n))+
+  geom_bar(stat = "identity",fill="purple")+
+  labs(title = "MURDER FLAG IN BROOKLYN PRECINTS")+
+  xlab("PRECINTS")+
+  ylab("MURDER FLAG") 
+```
+
+We can see that Precint 75 in brooklyn has the highest number of murder flags, 288 in number.
+Next, let's find out the highest victim age group in Brooklyn that resulted in murder
+```{r n_age_b, echo=TRUE,message=FALSE}
+n_age_b<-data2 %>%  group_by(BORO) %>% 
+       filter(BORO=='BROOKLYN', 
+              STATISTICAL_MURDER_FLAG=='TRUE') %>% 
+       count(VIC_AGE_GROUP) %>%  
+       arrange(-n) #victim age group 25-44 is at the top with 1019 murder flags
+n_age_b
+```
+
+Visualize the same.
+```{r n_age_b_vis, echo=TRUE,message=FALSE}
+n_age_b %>% ggplot(mapping=aes(x="", y=n, fill=VIC_AGE_GROUP)) +
+  geom_bar(stat="identity", width=1, color="white") +
+  labs(title = "VICTIM AGE GROUP IN BROOKLYN THAT RESULTED IN MURDER")+
+  coord_polar("y", start=0) +
+  geom_text(aes(label = n),
+            position = position_stack(vjust = 0.6))+
+  theme_void()
+```
+
+Clearly, victim age group 25-44 is at the top with 1019 murder flags.
+So let's find out the precint in Brooklyn with the highest number of victims aged 25-44 that resulted in murder.
+```{r n_age_p, echo=TRUE,message=FALSE}
+n_age_p<-data2 %>% filter(BORO=='BROOKLYN') %>%  
+       group_by(PRECINCT) %>% 
+       filter(STATISTICAL_MURDER_FLAG=='TRUE',
+              VIC_AGE_GROUP=='25-44')%>%
+       count(VIC_AGE_GROUP) %>% 
+       arrange(-n) # Precint 75 in brooklyn has the highest number of 136
+n_age_p$PRECINCT<-as.character(n_age_p$PRECINCT)
+n_age_p
+```
+
+```{r n_age_p_vis, echo=TRUE,message=FALSE}
+n_age_p %>% ggplot(mapping = aes(x=PRECINCT,y=n))+
+  geom_bar(stat = "identity",fill="black")+
+  labs(title = "VICTIMS AGED 25-44 IN BROOKLYN PRECINTS THAT RESULTED IN MURDER")+
+  xlab("PRECINTS")+
+  ylab("MURDER FLAG")
+
+```
+
+From the above, we can see that precint 75 in brooklyn is at the top with 136 in number.
+
+#### From the above analyses we can conlcude precint 75 in Brooklyn has the highest number of murder victims aged 25-44.
+
+### Model
+#### Predictive model to predict Boroough given only victim, perp & time related features. Such a model would come in handy when location related features could not be collected.
+ 
+First, let's import necessary packages and also extract date and time related features of the data.
+```{r model_lib, echo=TRUE,message=FALSE}
+library(caTools)
+library(randomForest)
+library(caret)
+library("psych")
+
+## Extract date and time related fetaures
+data2$OCCUR_DATE <- as.Date(data2$OCCUR_DATE, format='%m/%d/%Y')
+data2 <- data2 %>% 
+    mutate(year = year(OCCUR_DATE),
+           month = month(OCCUR_DATE),
+           day = day(OCCUR_DATE),
+           dow = weekdays(OCCUR_DATE),
+           hour = hour(OCCUR_TIME))
+```
+
+Then let's split data into train & test, based on the borough.
+```{r train_test, echo=TRUE,message=FALSE}
+## Split data into train & test, based on the BORO feature and remove all location related features
+sample <- sample.split(data2$BORO, SplitRatio = 0.7)
+train  <- subset(data2, sample == TRUE) %>% select(-c(INCIDENT_KEY,PRECINCT,LOCATION_DESC,OCCUR_DATE,OCCUR_TIME,X_COORD_CD,Y_COORD_CD,Latitude,Longitude,Lon_Lat))
+test   <- subset(data2, sample == FALSE) %>% select(-c(INCIDENT_KEY,PRECINCT,LOCATION_DESC,OCCUR_DATE,OCCUR_TIME,X_COORD_CD,Y_COORD_CD,Latitude,Longitude,Lon_Lat))
+```
+Note that the split ratio is 0.7 meaning 70% data goes to training and 30% goes to testing.
+Now let's build a random forest classification model and then evaluate model performance.
+
+```{r r_f, echo=TRUE,message=FALSE}
+## Build random forest classification model
+rf <- randomForest(BORO~., data=train, proximity=TRUE,ntree=500)
+test$Pred <- predict(rf, test)
+```
+
+```{r eva_rf, echo=TRUE,message=FALSE}
+## Evaluate model performance
+confusionMatrix(test$Pred, test$BORO)
+```
+Based on the evaluation, we can see that the model performs reasonably well in Brooklyn & Bronx, the 2 most crime prone Boroughs.
+
+
+### Biases in the data:
+
+Absence of population data: This data set has no features indicating the population density of the region where a shooting took place. Studies show that overpopulated areas are correlated with higher crime. Without population density estimates it is not possible to draw conclusions about the safety of a neighborhood, as the results could be biased against densely packed locations. This can be mitigated by using census data.
+
+
+
